@@ -1,4 +1,3 @@
-<!-- home.html -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -6,24 +5,66 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <header>
+<header>
+    {% if session.username %}
+        <span>Welcome, {{ session.username }}!</span>
+        <a href="{{ url_for('logout') }}"><button>Logout</button></a>
+    {% else %}
         <a href="{{ url_for('login') }}"><button>Login</button></a>
         <a href="{{ url_for('register') }}"><button>Register</button></a>
-    </header>
+    {% endif %}
+</header>
 
-    <h1>Items</h1>
-    <form method="get">
-        <input type="text" name="q" placeholder="Search..." value="{{ query }}">
-        <button type="submit">Search</button>
-    </form>
+<h1>Game Store</h1>
+<form method="get">
+    <input type="text" name="q" placeholder="Search..." value="{{ query }}">
+    <button type="submit">Search</button>
+</form>
 
-    <div class="grid">
-        {% for item in items %}
-            <div class="card">
-                <h3><a href="{{ url_for('item_page', item_id=item.id) }}">{{ item.name }}</a></h3>
-                <p>${{ item.price }}</p>
+{% if search_results %}
+    <h2>Search Results</h2>
+    <div class="items-list">
+        {% for item in search_results %}
+            <div class="item-row">
+                <div class="item-info">
+                    <a href="{{ url_for('item_page', appid=item.AppID) }}">{{ item.AppID }}</a>
+                </div>
+                <div class="item-meta">
+                    {{ item.Genres }} | Estimated Owners: {{ item['Estimated owners'] }}
+                </div>
             </div>
         {% endfor %}
     </div>
+{% else %}
+    <h2>Top 20 Games by Estimated Owners</h2>
+    <div class="items-list">
+        {% for item in top_overall %}
+            <div class="item-row">
+                <div class="item-info">
+                    <a href="{{ url_for('item_page', appid=item.AppID) }}">{{ item.AppID }}</a>
+                </div>
+                <div class="item-meta">
+                    {{ item.Genres }} | Estimated Owners: {{ item['Estimated owners'] }}
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+
+    {% for genre, items in genre_blocks.items() %}
+        <h2>Top 20 {{ genre }} Games</h2>
+        <div class="items-list">
+            {% for item in items %}
+                <div class="item-row">
+                    <div class="item-info">
+                        <a href="{{ url_for('item_page', appid=item.AppID) }}">{{ item.AppID }}</a>
+                    </div>
+                    <div class="item-meta">
+                        {{ item.Genres }} | Estimated Owners: {{ item['Estimated owners'] }}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% endfor %}
+{% endif %}
 </body>
 </html>

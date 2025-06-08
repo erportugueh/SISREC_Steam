@@ -90,3 +90,31 @@ ul {
 ul li {
     margin: 10px 0;
 }
+.items-list {
+  width: 100%;
+  max-width: 800px;
+  margin-top: 20px;
+}
+
+.item-row {
+  display: flex;
+  justify-content: space-between; /* space between name and price */
+  align-items: center;
+  border-bottom: 1px solid #ccc;
+  padding: 12px 0;
+}
+
+.item-info a {
+  font-weight: 600;
+  text-decoration: none;
+  color: #333;
+}
+
+.item-info a:hover {
+  text-decoration: underline;
+}
+
+.item-price {
+  font-size: 1.1em;
+  color: #666;
+}

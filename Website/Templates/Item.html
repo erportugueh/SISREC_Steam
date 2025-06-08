@@ -1,11 +1,42 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>{{ item.name }}</title>
+    <title>{{ item.AppID }}</title>
 </head>
 <body>
-    <h1>{{ item.name }}</h1>
-    <p>{{ item.description }}</p>
-    <a href="{{ url_for('retrieval_page', item_id=item.id) }}">More like this</a>
+        <header>
+                    <a href="{{ url_for('home') }}"><button>Home</button></a>
+
+        {% if session.username %}
+            <span>Welcome, {{ session.username }}!</span>
+            <a href="{{ url_for('logout') }}"><button>Logout</button></a>
+        {% else %}
+            <a href="{{ url_for('login') }}"><button>Login</button></a>
+            <a href="{{ url_for('register') }}"><button>Register</button></a>
+        {% endif %}
+    </header>
+    <h1>{{ item.AppID }}</h1>
+
+    <ul>
+        <li><strong>AppID:</strong> {{ item['AppID'] }}</li>
+        <li><strong>Release date:</strong> {{ item['Release date'] }}</li>
+        <li><strong>Estimated owners:</strong> {{ item['Estimated owners'] }}</li>
+        <li><strong>Price:</strong> ${{ item['Price'] }}</li>
+        <li><strong>Metacritic score:</strong> {{ item['Metacritic score'] }}</li>
+        <li><strong>User score:</strong> {{ item['User score'] }}</li>
+        <li><strong>Positive:</strong> {{ item['Positive'] }}</li>
+        <li><strong>Negative:</strong> {{ item['Negative'] }}</li>
+        <li><strong>Score rank:</strong> {{ item['Score rank'] }}</li>
+        <li><strong>Recommendations:</strong> {{ item['Recommendations'] }}</li>
+        <li><strong>Average playtime forever:</strong> {{ item['Average playtime forever'] }}</li>
+        <li><strong>Median playtime forever:</strong> {{ item['Median playtime forever'] }}</li>
+        <li><strong>Developers:</strong> {{ item['Developers'] }}</li>
+        <li><strong>Publishers:</strong> {{ item['Publishers'] }}</li>
+        <li><strong>Categories:</strong> {{ item['Categories'] }}</li>
+        <li><strong>Genres:</strong> {{ item['Genres'] }}</li>
+        <li><strong>Tags:</strong> {{ item['Tags'] }}</li>
+    </ul>
+
+        <button type="submit">Review</button>
 </body>
 </html>

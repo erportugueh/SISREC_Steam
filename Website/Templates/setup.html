@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Setup</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header>
+        <a href="{{ url_for('home') }}"><button>Home</button></a>
+    </header>
+
+    <h1>Choose up to 5 options</h1>
+
+<form method="post" id="choicesForm">
+    {% for item in items %}
+        <label>
+            <input type="checkbox" name="choices" value="{{ item }}" onchange="limitCheckboxes(this, 5)">
+            {{ item }}
+        </label><br>
+    {% endfor %}
+
+    <br>
+    <button type="submit">Submit</button>
+        <button type="button" onclick="window.location.href=homeUrl">Skip</button>
+
+    </form>
+
+<select name="choices" multiple size="8" id="multiSelect">
+    {% for item in items %}
+        <option value="{{ item }}">{{ item }}</option>
+    {% endfor %}
+</select>
+<br><br>
+
+<script>
+function limitCheckboxes(checkbox, max) {
+    const checkboxes = document.querySelectorAll('input[name="choices"]:checked');
+    if (checkboxes.length > max) {
+        alert(`You can only select up to ${max} options.`);
+        checkbox.checked = false;
+    }
+}
+</script>
+</body>
+</html>
