@@ -37,7 +37,7 @@
 
 <body>
     <header>
-        <a href="{{ url_for('home') }}"><button>Home</button></a>
+        <a href="{{ url_for('home') }}"><button>Skip</button></a>
     </header>
 
     <h1>Select 5 Games You Like</h1>
@@ -57,7 +57,7 @@
     <form method="post">
         <div class="button-row">
             <button type="submit">Submit</button>
-            <button type="submit" name="skip" value="true" formmethod="post" formaction="{{ url_for('setup') }}">Skip</button>
+            <a href="{{ url_for('home') }}" class="button-like">Skip</a>
         </div>
 
         {% for item in items %}

@@ -3,7 +3,7 @@ import pandas as pd
 import os
 from flask import session, flash
 from flask import redirect, url_for
-from Backend import load_users, save_users, load_data, get_top_overall, get_top_genre_blocks,  get_items, save_user_selection_json, load_user_selection_json, get_personalized_blocks, load_user_selections
+from Backend import load_users, save_users, load_data, get_personalized_blocks_with_ratings, load_user_ratings_for, get_top_overall, add_or_update_user_rating, get_top_genre_blocks,  get_items, save_user_selection_json, load_user_selection_json, get_personalized_blocks, load_user_selections
 
 app = Flask(__name__)
 
@@ -14,18 +14,24 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 csv_path = os.path.join(basedir, "items.csv")
 items_df = pd.read_csv(csv_path)
 
-
 @app.route('/')
 def home():
     username = session.get('username')
     df = load_data()
 
     if username:
-        user_selected_appids = load_user_selections(username)
+        # Load user selections and ratings
+        user_selected_appids = load_user_selections(username)  # List of appids user selected/liked
+        user_ratings = load_user_ratings_for(username)  # List of dicts {'appid':..., 'rating':...}
     else:
         user_selected_appids = []
+        user_ratings = []
 
-    if user_selected_appids:
+    if username and user_ratings:
+        # Use the personalized blocks that consider ratings
+        top_overall, genre_blocks = get_personalized_blocks_with_ratings(df, user_ratings)
+    elif user_selected_appids:
+        # Use personalized blocks based on selections (old behavior)
         top_overall, genre_blocks = get_personalized_blocks(df, user_selected_appids)
     else:
         top_overall = get_top_overall(df)
@@ -51,19 +57,20 @@ def item_page(appid):
 
 
 
-"""
+@app.route("/submit_review/<appid>", methods=["POST"])
+def submit_review(appid):
+    if 'username' not in session:
+        return redirect(url_for('login'))
+    
+    rating = request.form.get('rating')
+    if not rating or not rating.isdigit() or int(rating) not in range(1, 6):
+        flash("Please provide a valid rating between 1 and 5.")
+        return redirect(url_for('item_page', appid=appid))
 
-@app.route("/retrieval/<int:item_id>")
-def retrieval_page(item_id):
-    match = items_df[items_df["id"] == item_id]
-    if match.empty:
-        abort(404)
-    item = match.iloc[0].to_dict()
+    add_or_update_user_rating(session['username'], appid, int(rating))
+    flash("Your rating has been saved!")
+    return redirect(url_for('item_page', appid=appid))
 
-    related_items = items_df[items_df["id"] != item_id].sample(min(5, len(items_df)-1)).to_dict(orient="records")
-    return render_template("retrieval.html", item=item, related_items=related_items)
-
-"""
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":

@@ -1,7 +1,7 @@
 import json
 import random
 import os
-
+from collections import defaultdict
 import csv
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -12,6 +12,41 @@ import pandas as pd
 
 
 SELECTIONS_JSON = "Website/user_selections.json"
+
+RATINGS_FILE = "Website/user_ratings.json"
+
+
+def load_user_ratings_for(username):
+    all_ratings = load_user_ratings()  
+    return [r for r in all_ratings if r['username'] == username]
+
+def load_user_ratings():
+    if not os.path.exists(RATINGS_FILE):
+        return []
+    with open(RATINGS_FILE, "r") as f:
+        return json.load(f)
+
+def save_user_ratings(ratings):
+    with open(RATINGS_FILE, "w") as f:
+        json.dump(ratings, f, indent=2)
+
+def add_or_update_user_rating(username, appid, rating):
+    ratings = load_user_ratings()
+
+    # Check if user already rated this app
+    for r in ratings:
+        if r['username'] == username and r['appid'] == appid:
+            r['rating'] = rating  # update rating
+            break
+    else:
+        # If not found, append new rating
+        ratings.append({
+            "username": username,
+            "appid": appid,
+            "rating": rating
+        })
+
+    save_user_ratings(ratings)
 
 
 
@@ -115,6 +150,71 @@ def get_personalized_blocks(df, user_selected_appids, top_n=10, top_n_games=20):
 
 
 
+def get_personalized_blocks_with_ratings(df, user_ratings, top_n=10, top_n_games=20):
+    # user_ratings: list of dicts, e.g.
+    # [{'username': 'bob', 'appid': '123', 'rating': 5}, ...]
+    
+    rating_map = {str(r['appid']): r['rating'] for r in user_ratings}
+    
+    # Filter games that user rated
+    rated_games_df = df[df['AppID'].astype(str).isin(rating_map.keys())]
+    
+    if rated_games_df.empty:
+        return [], {}
+
+    # Weighted genre scores accumulator
+    genre_scores = defaultdict(float)
+
+    # For each rated game, parse genres and add weighted score by rating
+    for _, row in rated_games_df.iterrows():
+        appid = str(row['AppID'])
+        rating = rating_map.get(appid, 0)
+        if rating <= 1:  # Ignore rating 1
+            continue
+        
+        genres = [g.strip() for g in row['Genres'].split(',') if g.strip()]
+        
+
+        rating_weight_map = {1: 0.0, 2: 0.2, 3: 0.5, 4: 0.8, 5: 1.0}
+        weight = rating_weight_map.get(rating, 0.0)
+        
+        for genre in genres:
+            genre_scores[genre] += weight
+
+    if not genre_scores:
+        return [], {}
+
+    # Convert genre_scores to a weighted genre string list for vectorizer
+    # We'll repeat genre strings proportionally to their weights to bias TF-IDF
+    weighted_genres = []
+    for genre, score in genre_scores.items():
+        # Repeat genre in list proportional to weight * 10 (adjust scaling as needed)
+        repeat_count = max(1, int(score * 10))
+        weighted_genres.extend([genre] * repeat_count)
+
+    all_genres = df['Genres'].fillna('').unique()
+    vectorizer = TfidfVectorizer()
+    all_genre_vectors = vectorizer.fit_transform(all_genres)
+
+    user_genre_vector = vectorizer.transform([' '.join(weighted_genres)])
+    sim_scores = cosine_similarity(user_genre_vector, all_genre_vectors).flatten()
+
+    top_indices = sim_scores.argsort()[::-1][:top_n]
+
+    top_similar_genres = [all_genres[i] for i in top_indices if all_genres[i].strip() != '']
+
+    genre_blocks = {}
+    for genre_str in top_similar_genres:
+        filtered = df[df['Genres'].str.contains(genre_str, case=False, na=False)]
+        top_games = filtered.sort_values(by='Estimated owners', ascending=False).head(top_n_games)
+        genre_blocks[genre_str] = top_games.to_dict(orient='records')
+
+    return [], genre_blocks  # empty top_overall, personalized genre_blocks
+
+
+
+
+
 def load_user_selections(username, path=SELECTIONS_JSON):
     if not os.path.isfile(path):
         return []
@@ -128,18 +228,6 @@ def get_items(path="Website/items.csv"):
     df = pd.read_csv(path)
     return df.to_dict(orient='records')  # returns list of dicts
 
-# Function to display the menu
-def display_menu(logged_in):
-    print("Menu:")
-    if logged_in:
-        print("1. Logout")
-    else:
-        print("1. Login")
-        print("2. Register")
-    print("3. See All Items")
-    if logged_in:
-        print("4. Rate an Item")
-    print("5. Exit")
 
 # Function to load users from a file
 def load_users(filename='users.json'):
@@ -155,143 +243,6 @@ def save_users(users, filename='users.json'):
     with open(filename, 'w') as file:
         json.dump(users, file)
 
-# Function to register a new user
-def register_user(users):
-    username = input("Enter a username: ")
-    if username in users:
-        print("Username already exists. Please choose a different username.")
-    else:
-        password = input("Enter a password: ")
-        users[username] = password
-        save_users(users)
-        print("User registered successfully.")
-
-# Function to login a user
-def login_user(users):
-    username = input("Enter your username: ")
-    password = input("Enter your password: ")
-    if username in users and users[username] == password:
-        print("Login successful.")
-        return True
-    else:
-        print("Invalid username or password.")
-        return False
-
-# Function to create items
-def create_items():
-    genres = ['fps', 'tps', 'sps']
-    items = []
-   
-    item_id = 1
-    for genre in genres:
-        for i in range(10):
-            item = {
-                'name': f'{genre.upper()} Item {i+1}',
-                'id': item_id,
-                'genre': genre,
-                'price': random.randint(10, 40),
-                'valuation': random.randint(1, 5),
-                'ratings': [],
-                'description': f"This is the description of {genre.upper()} Item {i+1}."
-            }
-            items.append(item)
-            item_id += 1
-   
-    return items
-
-# Function to save items to a file
-def save_items(items, filename='items.json'):
-    with open(filename, 'w') as file:
-        json.dump(items, file)
-
-# Function to load items from a file
-def load_items(filename='items.json'):
-    try:
-        with open(filename, 'r') as file:
-            items = json.load(file)
-    except FileNotFoundError:
-        items = create_items()
-        save_items(items)
-    return items
-
-# Function to create sample users with ratings for each item
-def create_sample_users(items):
-    sample_users = {
-        "user1": "password1",
-        "user2": "password2",
-        "user3": "password3",
-        "user4": "password4",
-        "user5": "password5"
-    }
-   
-    for user in sample_users.keys():
-        for item in items:
-            rating = random.randint(1, 5)
-            item['ratings'].append(rating)
-            item['valuation'] = sum(item['ratings']) / len(item['ratings'])
-   
-    return sample_users
-
-# Function to display all items in categories and let the user select one to see the review and description
-def display_items(items, user_genre_preference=None):
-    def sort_items_by_valuation(items):
-        return sorted(items, key=lambda x: x['valuation'], reverse=True)
-   
-    def filter_items_by_genre(items, genre):
-        return [item for item in items if item['genre'] == genre]
-   
-    # Sort items by valuation
-    sorted_items = sort_items_by_valuation(items)
-   
-    # Display best 10 rated items
-    print("\nBest 10 Rated Items:")
-    for idx, item in enumerate(sorted_items[:10]):
-        print(f"{item['id']}. Name: {item['name']}, Genre: {item['genre']}, Valuation: {item['valuation']}")
-   
-    # Display items by genre with best rated ones first
-    genres = ['fps', 'tps', 'sps']
-   
-    if user_genre_preference and user_genre_preference in genres:
-        genres.remove(user_genre_preference)
-        genres.insert(0, user_genre_preference)
-   
-    for genre in genres:
-        genre_items = filter_items_by_genre(sorted_items, genre)
-        print(f"\nBest Rated {genre.upper()} Items:")
-        for item in genre_items:
-            print(f"{item['id']}. Name: {item['name']}, Genre: {item['genre']}, Valuation: {item['valuation']}")
-   
-    choice = int(input("\nSelect an item by ID to see the review and description: "))
-   
-    selected_item = next((item for item in sorted_items if item['id'] == choice), None)
-   
-    if selected_item:
-        print(f"\nSelected Item:\nName: {selected_item['name']}\nID: {selected_item['id']}\nGenre: {selected_item['genre']}\nPrice: {selected_item['price']} euros\nValuation: {selected_item['valuation']}\nDescription: {selected_item['description']}\nRatings: {selected_item['ratings']}")
-    else:
-        print("Invalid selection.")
-
-# Function to rate an item
-def rate_item(items):
-    choice = int(input("Enter the ID of the item you want to rate: "))
-   
-    selected_item = next((item for item in items if item['id'] == choice), None)
-   
-    if selected_item:
-        rating = int(input(f"Enter your rating for {selected_item['name']} (1-5): "))
-       
-        if 1 <= rating <= 5:
-            selected_item['ratings'].append(rating)
-            selected_item['valuation'] = sum(selected_item['ratings']) / len(selected_item['ratings'])
-            save_items(items)  # Save updated items
-            print(f"Rating added successfully. New valuation for {selected_item['name']} is {selected_item['valuation']:.2f}.")
-            return selected_item['genre']
-        else:
-            print("Invalid rating. Please enter a value between 1 and 5.")
-            return None
-    else:
-        print("Invalid selection.")
-        return None
-    
 
 
 
@@ -300,44 +251,7 @@ def rate_item(items):
 
 
 
-def main():
-    users = load_users()
-    items = load_items()
-   
-    # Create sample users with ratings for each item
-    sample_users = create_sample_users(items)
-   
-    # Merge sample users with existing users
-    users.update(sample_users)
-   
-    save_users(users)  # Save updated users
-   
-    logged_in = False
-    user_genre_preference = None
-   
-    while True:
-        display_menu(logged_in)
-        choice = input("Enter your choice (1-5): ")
-       
-        if choice == '1':
-            if logged_in:
-                logged_in = False
-                user_genre_preference = None
-                print("Logged out successfully.")
-            else:
-                logged_in = login_user(users)
-        elif choice == '2' and not logged_in:
-            register_user(users)
-            users = load_users()  # Reload users after registration
-        elif choice == '3':
-            display_items(items, user_genre_preference)
-        elif choice == '4' and logged_in:
-            user_genre_preference = rate_item(items)
-        elif choice == '5':
-            print("Exiting the program.")
-            break
-        else:
-            print("Invalid choice. Please try again.")
 
-if __name__ == "__main__":
-    main()
+
+
+
