@@ -1,9 +1,19 @@
 import json
 import random
+import os
 
-
+import csv
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 # Backend.py
 import pandas as pd
+
+
+
+
+SELECTIONS_JSON = "Website/user_selections.json"
+
+
 
 def load_data(csv_path='Website/items.csv'):
     df = pd.read_csv(csv_path)
@@ -16,6 +26,31 @@ def search_items(df, query):
         df['Name'].str.lower().str.contains(query) | 
         df['AppID'].astype(str).str.contains(query)
     ].to_dict(orient='records')
+
+
+def save_user_selection_json(username, appids):
+    if len(appids) != 5:
+        return False
+
+    data = {}
+    if os.path.isfile(SELECTIONS_JSON):
+        with open(SELECTIONS_JSON, "r") as f:
+            data = json.load(f)
+
+    data[username] = appids
+
+    with open(SELECTIONS_JSON, "w") as f:
+        json.dump(data, f, indent=4)
+
+    return True
+
+def load_user_selection_json(username):
+    if os.path.isfile(SELECTIONS_JSON):
+        with open(SELECTIONS_JSON, "r") as f:
+            data = json.load(f)
+        return data.get(username, [])
+    return []
+
 
 def get_top_overall(df, n=20):
     return df.sort_values(by='Estimated owners', ascending=False).head(n).to_dict(orient='records')
@@ -43,8 +78,55 @@ def get_top_genre_blocks(df, top_n_genres=10, top_n_games=20):
 
     return genre_blocks
 
+def get_personalized_blocks(df, user_selected_appids, top_n=10, top_n_games=20):
+    # Filter user's selected games from df
+    user_games_df = df[df['AppID'].astype(str).isin(user_selected_appids)]
+
+    if user_games_df.empty:
+        return [], {}
+
+    # Extract unique genres from user's games
+    user_genres_list = []
+    for genres_str in user_games_df['Genres'].fillna(''):
+        user_genres_list.extend([g.strip() for g in genres_str.split(',') if g.strip()])
+    user_genres_list = list(set(user_genres_list))
+
+    all_genres = df['Genres'].fillna('').unique()
+
+    vectorizer = TfidfVectorizer()
+    all_genre_vectors = vectorizer.fit_transform(all_genres)
+
+    user_genre_vectors = vectorizer.transform([' '.join(user_genres_list)])
+
+    sim_scores = cosine_similarity(user_genre_vectors, all_genre_vectors).flatten()
+
+    top_indices = sim_scores.argsort()[::-1][:top_n]
+
+    top_similar_genres = [all_genres[i] for i in top_indices if all_genres[i].strip() != '']
+
+    genre_blocks = {}
+    for genre_str in top_similar_genres:
+        filtered = df[df['Genres'].str.contains(genre_str, case=False, na=False)]
+        top_games = filtered.sort_values(by='Estimated owners', ascending=False).head(top_n_games)
+        genre_blocks[genre_str] = top_games.to_dict(orient='records')
+
+    return [], genre_blocks  # empty top_overall, personalized genre_blocks
 
 
+
+
+def load_user_selections(username, path=SELECTIONS_JSON):
+    if not os.path.isfile(path):
+        return []
+    with open(path, "r") as f:
+        data = json.load(f)
+    return data.get(username, [])
+
+
+
+def get_items(path="Website/items.csv"):
+    df = pd.read_csv(path)
+    return df.to_dict(orient='records')  # returns list of dicts
 
 # Function to display the menu
 def display_menu(logged_in):
@@ -209,6 +291,14 @@ def rate_item(items):
     else:
         print("Invalid selection.")
         return None
+    
+
+
+
+
+
+
+
 
 def main():
     users = load_users()

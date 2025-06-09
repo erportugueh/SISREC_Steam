@@ -1,9 +1,9 @@
 from flask import Flask, render_template, request, abort
 import pandas as pd
 import os
-from flask import session
+from flask import session, flash
 from flask import redirect, url_for
-from Backend import load_users, save_users, load_data, search_items, get_top_overall, get_top_genre_blocks
+from Backend import load_users, save_users, load_data, get_top_overall, get_top_genre_blocks,  get_items, save_user_selection_json, load_user_selection_json, get_personalized_blocks, load_user_selections
 
 app = Flask(__name__)
 
@@ -17,21 +17,19 @@ items_df = pd.read_csv(csv_path)
 
 @app.route('/')
 def home():
-    query = request.args.get('q', '').strip()
+    username = session.get('username')
     df = load_data()
 
-    if query:
-        search_results = search_items(df, query)
-        return render_template(
-            'home.html',
-            query=query,
-            search_results=search_results,
-            top_overall=[],
-            genre_blocks={}
-        )
+    if username:
+        user_selected_appids = load_user_selections(username)
+    else:
+        user_selected_appids = []
 
-    top_overall = get_top_overall(df)
-    genre_blocks = get_top_genre_blocks(df)
+    if user_selected_appids:
+        top_overall, genre_blocks = get_personalized_blocks(df, user_selected_appids)
+    else:
+        top_overall = get_top_overall(df)
+        genre_blocks = get_top_genre_blocks(df)
 
     return render_template(
         'home.html',
@@ -40,6 +38,7 @@ def home():
         top_overall=top_overall,
         genre_blocks=genre_blocks
     )
+
 
 @app.route("/item/<appid>")
 def item_page(appid):
@@ -111,21 +110,30 @@ def register():
 
     return render_template("register.html")
 
+from Backend import save_user_selection_json
+from flask import flash
+
 @app.route("/setup", methods=["GET", "POST"])
 def setup():
     if 'username' not in session:
-        return redirect(url_for('login'))  # protect this page
+        return redirect(url_for('login'))
 
-    items = ["Option 1", "Option 2", "Option 3", "Option 4", "Option 5",
-             "Option 6", "Option 7", "Option 8"]  # example options
+    items = get_items()
 
     if request.method == "POST":
-        chosen = request.form.getlist('choices')  # get multiple selected values
-        # Here you could save the choices to user data if you want
-        # For now, just redirect home after submission
-        return redirect(url_for('home'))
+        selected = request.form.getlist('choices')
+        if len(selected) != 5:
+            flash("Please select exactly 5 games.")
+            return render_template("setup.html", items=items, selected=selected)
+        else:
+            save_user_selection_json(session['username'], selected)
+            return redirect(url_for('home'))
 
-    return render_template("setup.html", items=items)
+    # For GET requests, try to load previous selections to keep them checked on reload
+    user_selections = load_user_selection_json(session['username'])
+    return render_template("setup.html", items=items, selected=user_selections)
+
+
 
 
 if __name__ == "__main__":

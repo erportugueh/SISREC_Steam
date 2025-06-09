@@ -3,43 +3,70 @@
 <head>
     <title>Setup</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .button-row {
+            margin-top: 10px;
+            margin-bottom: 20px;
+        }
+    </style>
 </head>
+
+<script>
+    function filterItems() {
+        let query = document.getElementById('searchBox').value.toLowerCase();
+        let items = document.getElementsByClassName('item');
+
+        for (let item of items) {
+            let name = item.dataset.name.toLowerCase();
+            item.style.display = name.includes(query) ? 'block' : 'none';
+        }
+    }
+
+    function limitSelection(limit = 5) {
+        let checkboxes = document.querySelectorAll('input[type="checkbox"]');
+        let checked = Array.from(checkboxes).filter(c => c.checked);
+        if (checked.length >= limit) {
+            checkboxes.forEach(c => {
+                if (!c.checked) c.disabled = true;
+            });
+        } else {
+            checkboxes.forEach(c => c.disabled = false);
+        }
+    }
+</script>
+
 <body>
     <header>
         <a href="{{ url_for('home') }}"><button>Home</button></a>
     </header>
 
-    <h1>Choose up to 5 options</h1>
+    <h1>Select 5 Games You Like</h1>
 
-<form method="post" id="choicesForm">
-    {% for item in items %}
-        <label>
-            <input type="checkbox" name="choices" value="{{ item }}" onchange="limitCheckboxes(this, 5)">
-            {{ item }}
-        </label><br>
-    {% endfor %}
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul style="color:red;">
+          {% for message in messages %}
+            <li>{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
 
-    <br>
-    <button type="submit">Submit</button>
-        <button type="button" onclick="window.location.href=homeUrl">Skip</button>
+    <input type="text" id="searchBox" onkeyup="filterItems()" placeholder="Search games..."><br>
 
+    <form method="post">
+        <div class="button-row">
+            <button type="submit">Submit</button>
+            <button type="submit" name="skip" value="true" formmethod="post" formaction="{{ url_for('setup') }}">Skip</button>
+        </div>
+
+        {% for item in items %}
+            <div class="item" data-name="{{ item['AppID'] }}">
+                <input type="checkbox" name="choices" value="{{ item['AppID'] }}" onchange="limitSelection()" 
+                    {% if item['AppID'] in selected %} checked {% endif %} />
+                {{ item['AppID'] }} ({{ item['Estimated owners'] }})
+            </div>
+        {% endfor %}
     </form>
-
-<select name="choices" multiple size="8" id="multiSelect">
-    {% for item in items %}
-        <option value="{{ item }}">{{ item }}</option>
-    {% endfor %}
-</select>
-<br><br>
-
-<script>
-function limitCheckboxes(checkbox, max) {
-    const checkboxes = document.querySelectorAll('input[name="choices"]:checked');
-    if (checkboxes.length > max) {
-        alert(`You can only select up to ${max} options.`);
-        checkbox.checked = false;
-    }
-}
-</script>
 </body>
 </html>
