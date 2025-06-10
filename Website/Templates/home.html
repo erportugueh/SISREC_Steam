@@ -16,11 +16,18 @@
 </header>
 
 <h1>Game Store</h1>
+
+<!-- Search and Filter Form -->
 <form method="get">
     <input type="text" name="q" placeholder="Search..." value="{{ query }}">
+    <select name="filter">
+        <option value="owners" {% if filter == 'owners' %}selected{% endif %}>Most Owners</option>
+        <option value="rating" {% if filter == 'rating' %}selected{% endif %}>Best Ratings</option>
+    </select>
     <button type="submit">Search</button>
 </form>
 
+<!-- Results Section -->
 {% if search_results %}
     <h2>Search Results</h2>
     <div class="items-list">
@@ -30,13 +37,13 @@
                     <a href="{{ url_for('item_page', appid=item.AppID) }}">{{ item.AppID }}</a>
                 </div>
                 <div class="item-meta">
-                    {{ item.Genres }} | Estimated Owners: {{ item['Estimated owners'] }}
+                    {{ item.Genres }} | Estimated Owners: {{ item['Estimated owners'] }} | Rating: {{ item.RatingPercent }}%
                 </div>
             </div>
         {% endfor %}
     </div>
 {% else %}
-    <h2>Top 20 Games by Estimated Owners</h2>
+    <h2>Top 20 Games by {{ 'Estimated Owners' if filter == 'owners' else 'Good Ratings' }}</h2>
     <div class="items-list">
         {% for item in top_overall %}
             <div class="item-row">
@@ -44,7 +51,7 @@
                     <a href="{{ url_for('item_page', appid=item.AppID) }}">{{ item.AppID }}</a>
                 </div>
                 <div class="item-meta">
-                    {{ item.Genres }} | Estimated Owners: {{ item['Estimated owners'] }}
+                    {{ item.Genres }} | Estimated Owners: {{ item['Estimated owners'] }} | Rating: {{ item.RatingPercent }}%
                 </div>
             </div>
         {% endfor %}
@@ -59,12 +66,13 @@
                         <a href="{{ url_for('item_page', appid=item.AppID) }}">{{ item.AppID }}</a>
                     </div>
                     <div class="item-meta">
-                        {{ item.Genres }} | Estimated Owners: {{ item['Estimated owners'] }}
+                        {{ item.Genres }} | Estimated Owners: {{ item['Estimated owners'] }} | Rating: {{ item.RatingPercent }}%
                     </div>
                 </div>
             {% endfor %}
         </div>
     {% endfor %}
 {% endif %}
+
 </body>
 </html>

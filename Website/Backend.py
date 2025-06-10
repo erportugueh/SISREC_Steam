@@ -86,9 +86,34 @@ def load_user_selection_json(username):
         return data.get(username, [])
     return []
 
+def calculate_rating_percent(row):
+    try:
+        positive = int(row.get('Positive', 0))
+        negative = int(row.get('Negative', 0))
+        total = positive + negative
+        if total == 0:
+            return 0.0
+        return round((positive / total) * 100, 2)
+    except:
+        return 0.0
+    
 
-def get_top_overall(df, n=20):
-    return df.sort_values(by='Estimated owners', ascending=False).head(n).to_dict(orient='records')
+def get_top_by_rating(df, n=20):
+    df = df.copy()
+    df['RatingPercent'] = df.apply(lambda row: (
+        round(100 * row['Positive'] / (row['Positive'] + row['Negative']))
+        if row['Positive'] + row['Negative'] > 0 else 0
+    ), axis=1)
+    return df.sort_values(by='RatingPercent', ascending=False).head(n).to_dict(orient='records')
+
+def get_top_overall(df, sort_by='owners', n=20):
+    df = df.copy()
+    if sort_by == 'rating':
+        df['RatingPercent'] = df.apply(calculate_rating_percent, axis=1)
+        return df.sort_values(by='RatingPercent', ascending=False).head(n).to_dict(orient='records')
+    else:
+        return df.sort_values(by='Estimated owners', ascending=False).head(n).to_dict(orient='records')
+
 
 def get_top_genre_blocks(df, top_n_genres=10, top_n_games=20):
     genre_df = df.copy()
@@ -113,7 +138,38 @@ def get_top_genre_blocks(df, top_n_genres=10, top_n_games=20):
 
     return genre_blocks
 
-def get_personalized_blocks(df, user_selected_appids, top_n=10, top_n_games=20):
+def get_top_genre_blocks(df, top_n_genres=10, top_n_games=20, sort_by='owners'):
+    genre_df = df.copy()
+    genre_df['Genres'] = genre_df['Genres'].str.split(',')
+    genre_df = genre_df.explode('Genres')
+    genre_df['Genres'] = genre_df['Genres'].str.strip()
+
+    top_genres = (
+        genre_df.groupby('Genres')['Estimated owners']
+        .sum()
+        .sort_values(ascending=False)
+        .head(top_n_genres)
+        .index.tolist()
+    )
+
+    genre_blocks = {}
+    for genre in top_genres:
+        filtered = genre_df[genre_df['Genres'] == genre].copy()
+
+        if sort_by == 'rating':
+            filtered['RatingPercent'] = filtered.apply(lambda row: (
+                round(100 * row['Positive'] / (row['Positive'] + row['Negative']))
+                if row['Positive'] + row['Negative'] > 0 else 0
+            ), axis=1)
+            top_games = filtered.sort_values(by='RatingPercent', ascending=False).head(top_n_games)
+        else:
+            top_games = filtered.sort_values(by='Estimated owners', ascending=False).head(top_n_games)
+
+        genre_blocks[genre] = top_games.to_dict(orient='records')
+
+    return genre_blocks
+
+def get_personalized_blocks(df, user_selected_appids, top_n=10, top_n_games=20, sort_by='owners'):
     # Filter user's selected games from df
     user_games_df = df[df['AppID'].astype(str).isin(user_selected_appids)]
 
@@ -141,24 +197,30 @@ def get_personalized_blocks(df, user_selected_appids, top_n=10, top_n_games=20):
 
     genre_blocks = {}
     for genre_str in top_similar_genres:
-        filtered = df[df['Genres'].str.contains(genre_str, case=False, na=False)]
-        top_games = filtered.sort_values(by='Estimated owners', ascending=False).head(top_n_games)
+        filtered = df[df['Genres'].str.contains(genre_str, case=False, na=False)].copy()
+
+        if sort_by == 'rating':
+            filtered['RatingPercent'] = filtered.apply(lambda row: (
+                round(100 * row['Positive'] / (row['Positive'] + row['Negative']))
+                if row['Positive'] + row['Negative'] > 0 else 0), axis=1)
+            top_games = filtered.sort_values(by='RatingPercent', ascending=False).head(top_n_games)
+        else:
+            top_games = filtered.sort_values(by='Estimated owners', ascending=False).head(top_n_games)
+
         genre_blocks[genre_str] = top_games.to_dict(orient='records')
 
-    return [], genre_blocks  # empty top_overall, personalized genre_blocks
+    return [], genre_blocks
 
 
 
+def get_personalized_blocks_with_ratings(df, user_ratings, top_n=10, top_n_games=20, sort_by='owners'):
+    # user_ratings: list of dicts, e.g. [{'username': 'bob', 'appid': '123', 'rating': 5}, ...]
 
-def get_personalized_blocks_with_ratings(df, user_ratings, top_n=10, top_n_games=20):
-    # user_ratings: list of dicts, e.g.
-    # [{'username': 'bob', 'appid': '123', 'rating': 5}, ...]
-    
     rating_map = {str(r['appid']): r['rating'] for r in user_ratings}
-    
+
     # Filter games that user rated
     rated_games_df = df[df['AppID'].astype(str).isin(rating_map.keys())]
-    
+
     if rated_games_df.empty:
         return [], {}
 
@@ -169,27 +231,24 @@ def get_personalized_blocks_with_ratings(df, user_ratings, top_n=10, top_n_games
     for _, row in rated_games_df.iterrows():
         appid = str(row['AppID'])
         rating = rating_map.get(appid, 0)
-        if rating <= 1:  # Ignore rating 1
-            continue
-        
-        genres = [g.strip() for g in row['Genres'].split(',') if g.strip()]
-        
 
-        rating_weight_map = {1: 0.0, 2: 0.2, 3: 0.5, 4: 0.8, 5: 1.0}
-        weight = rating_weight_map.get(rating, 0.0)
-        
+        # Include all ratings, assign small weights to low ratings
+        rating_weight_map = {1: 0.1, 2: 0.3, 3: 0.5, 4: 0.8, 5: 1.0}
+        weight = rating_weight_map.get(int(round(rating)), 0.0)
+
+        genres_str = row['Genres'] if pd.notnull(row['Genres']) else ''
+        genres = [g.strip() for g in genres_str.split(',') if g.strip()]
+
         for genre in genres:
             genre_scores[genre] += weight
 
     if not genre_scores:
         return [], {}
 
-    # Convert genre_scores to a weighted genre string list for vectorizer
-    # We'll repeat genre strings proportionally to their weights to bias TF-IDF
+    # Create weighted genre list (repeat genres by weighted score)
     weighted_genres = []
     for genre, score in genre_scores.items():
-        # Repeat genre in list proportional to weight * 10 (adjust scaling as needed)
-        repeat_count = max(1, int(score * 10))
+        repeat_count = max(1, int(score * 15))  # Adjust scale factor as needed
         weighted_genres.extend([genre] * repeat_count)
 
     all_genres = df['Genres'].fillna('').unique()
@@ -200,19 +259,27 @@ def get_personalized_blocks_with_ratings(df, user_ratings, top_n=10, top_n_games
     sim_scores = cosine_similarity(user_genre_vector, all_genre_vectors).flatten()
 
     top_indices = sim_scores.argsort()[::-1][:top_n]
-
     top_similar_genres = [all_genres[i] for i in top_indices if all_genres[i].strip() != '']
 
     genre_blocks = {}
     for genre_str in top_similar_genres:
-        filtered = df[df['Genres'].str.contains(genre_str, case=False, na=False)]
-        top_games = filtered.sort_values(by='Estimated owners', ascending=False).head(top_n_games)
+        filtered = df[df['Genres'].str.contains(genre_str, case=False, na=False)].copy()
+
+        if sort_by == 'rating':
+            filtered['RatingPercent'] = filtered.apply(
+                lambda row: (
+                    round(100 * row['Positive'] / (row['Positive'] + row['Negative']))
+                    if row['Positive'] + row['Negative'] > 0 else 0
+                ),
+                axis=1
+            )
+            top_games = filtered.sort_values(by='RatingPercent', ascending=False).head(top_n_games)
+        else:
+            top_games = filtered.sort_values(by='Estimated owners', ascending=False).head(top_n_games)
+
         genre_blocks[genre_str] = top_games.to_dict(orient='records')
 
-    return [], genre_blocks  # empty top_overall, personalized genre_blocks
-
-
-
+    return [], genre_blocks
 
 
 def load_user_selections(username, path=SELECTIONS_JSON):
