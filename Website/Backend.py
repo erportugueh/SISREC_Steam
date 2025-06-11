@@ -1,11 +1,8 @@
 import json
-import random
 import os
 from collections import defaultdict
-import csv
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-# Backend.py
 import pandas as pd
 
 
@@ -115,28 +112,7 @@ def get_top_overall(df, sort_by='owners', n=20):
         return df.sort_values(by='Estimated owners', ascending=False).head(n).to_dict(orient='records')
 
 
-def get_top_genre_blocks(df, top_n_genres=10, top_n_games=20):
-    genre_df = df.copy()
-    genre_df['Genres'] = genre_df['Genres'].str.split(',')
-    genre_df = genre_df.explode('Genres')
-    genre_df['Genres'] = genre_df['Genres'].str.strip()
 
-    top_genres = (
-        genre_df.groupby('Genres')['Estimated owners']
-        .sum()
-        .sort_values(ascending=False)
-        .head(top_n_genres)
-        .index.tolist()
-    )
-
-    genre_blocks = {}
-    for genre in top_genres:
-        top_games = genre_df[genre_df['Genres'] == genre]\
-            .sort_values(by='Estimated owners', ascending=False)\
-            .head(top_n_games)
-        genre_blocks[genre] = top_games.to_dict(orient='records')
-
-    return genre_blocks
 
 def get_top_genre_blocks(df, top_n_genres=10, top_n_games=20, sort_by='owners'):
     genre_df = df.copy()
